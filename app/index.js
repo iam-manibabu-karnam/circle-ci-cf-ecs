@@ -6,5 +6,5 @@ http.createServer((req, res) => {
   res.end('Hello World from ECS!');
 }).listen(port);
 
-console.log(`App running at http://localhost:${port}`);
+console.log(`App is running at http://localhost:${port}`);
 
