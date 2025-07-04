@@ -11,25 +11,44 @@ jobs:
     steps:
       - checkout
       - setup_remote_docker
+
       - run:
-          name: Login to ECR
+          name: Validate Required Environment Variables
           command: |
-            aws ecr get-login-password --region $AWS_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+            for var in AWS_ACCOUNT_ID AWS_REGION ECR_REPO_NAME CLUSTER_NAME SERVICE_NAME; do
+              if [ -z "${!var}" ]; then
+                echo "❌ Environment variable $var is not set."
+                exit 1
+              fi
+            done
+
       - run:
-          name: Build & Push Docker Image
+          name: Login to Amazon ECR
+          command: |
+            aws ecr get-login-password --region $AWS_REGION | \
+              docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+
+      - run:
+          name: Build and Push Docker Image
           command: |
             IMAGE_TAG="${CIRCLE_SHA1:0:7}"
+            ECR_URL="$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME"
+
+            echo "Building image: $ECR_URL:$IMAGE_TAG"
             docker build -t $ECR_REPO_NAME:$IMAGE_TAG ./app
-            docker tag $ECR_REPO_NAME:$TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$TAG
-            docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$ECR_REPO_NAME:$IMAGE_TAG
+            docker tag $ECR_REPO_NAME:$IMAGE_TAG $ECR_URL:$IMAGE_TAG
+            docker push $ECR_URL:$IMAGE_TAG
+
       - run:
-          name: Deploy to ECS
+          name: Deploy to ECS (Force New Deployment)
           command: |
-            aws ecs update-service --cluster $CLUSTER_NAME --service $SERVICE_NAME --force-new-deployment
+            aws ecs update-service \
+              --cluster $CLUSTER_NAME \
+              --service $SERVICE_NAME \
+              --force-new-deployment
 
 workflows:
   version: 2
   deploy:
     jobs:
       - build-and-deploy
-
